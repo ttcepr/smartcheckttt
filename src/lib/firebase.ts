@@ -69,11 +69,19 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log("Firestore connection successful.");
   } catch (error) {
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration. ");
+    if (error instanceof Error) {
+      if (error.message.includes('the client is offline') || error.message.includes('permission-denied')) {
+        console.error("Firebase Configuration Error: ", error.message);
+        console.error("Please ensure:");
+        console.error("1. Firestore is initialized in your Firebase Console (https://console.firebase.google.com/project/noithatotoxuanluu/firestore).");
+        console.error("2. You have created a database instance (usually '(default)').");
+        console.error("3. Your security rules allow access (I have deployed them, but they require authentication).");
+      } else {
+        console.error("Firestore Connection Test Error: ", error.message);
+      }
     }
-    // Skip logging for other errors, as this is simply a connection test.
   }
 }
 testConnection();
