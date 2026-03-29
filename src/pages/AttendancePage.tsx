@@ -28,12 +28,17 @@ export default function AttendancePage({ userData }: AttendancePageProps) {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [company, setCompany] = useState<any>(null);
+  const [shifts, setShifts] = useState<any[]>([]);
+  const [selectedShiftId, setSelectedShiftId] = useState("");
   const [status, setStatus] = useState<'checking' | 'ready' | 'success' | 'error'>('checking');
   const [errorMsg, setErrorMsg] = useState("");
+  const [lastAttendance, setLastAttendance] = useState<any>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     fetchCompanyInfo();
+    fetchShifts();
+    fetchTodayAttendance();
     getCurrentLocation();
     return () => clearInterval(timer);
   }, []);
@@ -52,6 +57,31 @@ export default function AttendancePage({ userData }: AttendancePageProps) {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const fetchShifts = async () => {
+    if (!userData?.companyId) return;
+    const q = query(collection(db, "shifts"), where("companyId", "==", userData.companyId));
+    const snap = await getDocs(q);
+    const shiftData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    setShifts(shiftData);
+    if (shiftData.length > 0) setSelectedShiftId(shiftData[0].id);
+  };
+
+  const fetchTodayAttendance = async () => {
+    if (!userData?.uid) return;
+    const today = format(new Date(), "yyyy-MM-dd");
+    const q = query(
+      collection(db, "attendance"), 
+      where("userId", "==", userData.uid),
+      where("date", "==", today)
+    );
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const records = snap.docs.map(doc => doc.data());
+      records.sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
+      setLastAttendance(records[0]);
     }
   };
 
@@ -95,7 +125,7 @@ export default function AttendancePage({ userData }: AttendancePageProps) {
     return R * c; // in metres
   };
 
-  const handleCheckIn = async () => {
+  const handleAttendance = async () => {
     if (!location || !company) return;
 
     const distance = calculateDistance(location.lat, location.lng, company.lat, company.lng);
@@ -105,20 +135,24 @@ export default function AttendancePage({ userData }: AttendancePageProps) {
       return;
     }
 
+    const type = lastAttendance?.type === 'checkin' ? 'checkout' : 'checkin';
+
     try {
       setStatus('checking');
       await addDoc(collection(db, "attendance"), {
         userId: userData.uid,
         companyId: userData.companyId,
+        shiftId: selectedShiftId,
         checkInTime: new Date().toISOString(),
         location: location,
         date: format(new Date(), "yyyy-MM-dd"),
-        status: "on_time", // Logic for late can be added here
+        type: type,
+        status: "on_time",
         createdAt: new Date().toISOString()
       });
       
       setStatus('success');
-      toast.success("Chấm công thành công!");
+      toast.success(type === 'checkin' ? "Check-in thành công!" : "Check-out thành công!");
       setTimeout(() => navigate("/"), 2000);
     } catch (e: any) {
       toast.error("Lỗi: " + e.message);
@@ -136,7 +170,7 @@ export default function AttendancePage({ userData }: AttendancePageProps) {
         <h1 className="text-xl font-bold text-slate-800">Chấm công</h1>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-6 space-y-12">
+      <main className="flex-1 flex flex-col items-center justify-center p-6 space-y-8">
         {/* Clock Display */}
         <div className="text-center space-y-2">
           <h2 className="text-6xl font-bold tracking-tighter text-slate-900">
@@ -147,12 +181,27 @@ export default function AttendancePage({ userData }: AttendancePageProps) {
           </p>
         </div>
 
+        {/* Shift Selection */}
+        <div className="w-full max-w-sm space-y-2">
+          <label className="text-xs font-bold text-slate-400 uppercase">Chọn ca làm việc</label>
+          <select 
+            value={selectedShiftId}
+            onChange={(e) => setSelectedShiftId(e.target.value)}
+            className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {shifts.map(shift => (
+              <option key={shift.id} value={shift.id}>{shift.name} ({shift.startTime} - {shift.endTime})</option>
+            ))}
+            {shifts.length === 0 && <option value="">Chưa có ca làm việc</option>}
+          </select>
+        </div>
+
         {/* Status Indicators */}
         <div className="w-full max-w-sm grid grid-cols-2 gap-4">
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center gap-2">
             <Wifi size={20} className="text-slate-400" />
             <span className="text-[10px] font-bold text-slate-400 uppercase">WIFI</span>
-            <span className="text-xs font-bold text-slate-600">SmartCheck_Office</span>
+            <span className="text-xs font-bold text-slate-600">{company?.wifiSSID || "Bất kỳ"}</span>
           </div>
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center gap-2">
             <MapPin size={20} className={cn("transition-colors", location ? "text-blue-600" : "text-slate-400")} />
@@ -163,7 +212,7 @@ export default function AttendancePage({ userData }: AttendancePageProps) {
           </div>
         </div>
 
-        {/* Main Check-in Button */}
+        {/* Main Attendance Button */}
         <div className="relative">
           <AnimatePresence mode="wait">
             {status === 'success' ? (
@@ -181,18 +230,20 @@ export default function AttendancePage({ userData }: AttendancePageProps) {
                 key="button"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={handleCheckIn}
-                disabled={status === 'checking' || !location}
+                onClick={handleAttendance}
+                disabled={status === 'checking' || !location || shifts.length === 0}
                 className={cn(
                   "w-48 h-48 rounded-full flex flex-col items-center justify-center text-white shadow-2xl transition-all border-8 border-slate-50",
-                  location ? "bg-blue-600 shadow-blue-200" : "bg-slate-300 shadow-none cursor-not-allowed"
+                  (location && shifts.length > 0) ? "bg-blue-600 shadow-blue-200" : "bg-slate-300 shadow-none cursor-not-allowed"
                 )}
               >
                 {status === 'checking' ? (
                   <RefreshCw size={48} className="animate-spin" />
                 ) : (
                   <>
-                    <span className="text-2xl font-black uppercase tracking-tighter">CHECK-IN</span>
+                    <span className="text-2xl font-black uppercase tracking-tighter">
+                      {lastAttendance?.type === 'checkin' ? 'CHECK-OUT' : 'CHECK-IN'}
+                    </span>
                     <span className="text-[10px] font-bold opacity-70 mt-1">Bấm để chấm công</span>
                   </>
                 )}

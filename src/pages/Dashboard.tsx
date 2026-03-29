@@ -40,20 +40,45 @@ export default function Dashboard({ userData }: DashboardProps) {
     const q = query(
       collection(db, "attendance"),
       where("userId", "==", userData.uid),
-      orderBy("date", "desc"),
-      limit(10)
+      orderBy("checkInTime", "desc"),
+      limit(50)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setAttendances(data);
       
-      // Calculate stats (simplified)
-      setStats(prev => ({
-        ...prev,
-        workDays: data.length,
-        lateCount: data.filter((a: any) => a.status === 'late').length
-      }));
+      // Group by date
+      const grouped: any = {};
+      data.forEach((record: any) => {
+        const date = record.date;
+        if (!grouped[date]) {
+          grouped[date] = { date, checkIn: null, checkOut: null, status: 'on_time' };
+        }
+        if (record.type === 'checkin') {
+          grouped[date].checkIn = record.checkInTime;
+          grouped[date].status = record.status;
+        } else if (record.type === 'checkout') {
+          grouped[date].checkOut = record.checkInTime;
+        }
+      });
+
+      const sortedGrouped = Object.values(grouped).sort((a: any, b: any) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+
+      setAttendances(sortedGrouped);
+      
+      // Calculate stats
+      const workDays = Object.keys(grouped).length;
+      const lateCount = Object.values(grouped).filter((a: any) => a.status === 'late').length;
+      const missingOut = Object.values(grouped).filter((a: any) => !a.checkOut).length;
+
+      setStats({
+        workDays,
+        lateCount,
+        missingOut,
+        absent: 24 - workDays // Assuming 24 work days in a month
+      });
     });
 
     return () => unsubscribe();
@@ -109,10 +134,10 @@ export default function Dashboard({ userData }: DashboardProps) {
           <div className="divide-y divide-slate-50">
             {attendances.length > 0 ? (
               attendances.map((item) => (
-                <div key={item.id} className="grid grid-cols-5 px-4 py-4 items-center text-sm">
+                <div key={item.date} className="grid grid-cols-5 px-4 py-4 items-center text-sm">
                   <span className="font-medium text-slate-700">{format(new Date(item.date), "dd/MM")}</span>
-                  <span className="text-slate-600">{item.checkInTime ? format(new Date(item.checkInTime), "HH:mm") : "—"}</span>
-                  <span className="text-slate-600">{item.checkOutTime ? format(new Date(item.checkOutTime), "HH:mm") : "—"}</span>
+                  <span className="text-slate-600">{item.checkIn ? format(new Date(item.checkIn), "HH:mm") : "—"}</span>
+                  <span className="text-slate-600">{item.checkOut ? format(new Date(item.checkOut), "HH:mm") : "—"}</span>
                   <div className="col-span-2 flex items-center justify-between">
                     <span className={cn(
                       "px-2 py-1 rounded-md text-[10px] font-bold uppercase",

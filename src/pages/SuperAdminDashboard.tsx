@@ -18,8 +18,10 @@ export default function SuperAdminDashboard() {
   const [companies, setCompanies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingCompany, setEditingCompany] = useState<any>(null);
   const [newCompany, setNewCompany] = useState({ name: "", address: "", lat: 0, lng: 0, radius: 100 });
   const [adminEmail, setAdminEmail] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     fetchCompanies();
@@ -34,33 +36,68 @@ export default function SuperAdminDashboard() {
   const handleAddCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const companyRef = await addDoc(collection(db, "companies"), {
-        ...newCompany,
-        createdAt: new Date().toISOString()
-      });
-
-      if (adminEmail) {
-        // Create a placeholder user in Firestore
-        // In a real app, you'd use a Cloud Function to create the Auth user
-        // For this demo, we'll create the Firestore record and the user will "register" or we'll handle it in Login
-        await addDoc(collection(db, "users"), {
-          email: adminEmail,
-          role: "company_admin",
-          companyId: companyRef.id,
-          displayName: "Admin " + newCompany.name,
-          mustChangePassword: true,
+      if (editingCompany) {
+        await updateDoc(doc(db, "companies", editingCompany.id), {
+          ...newCompany,
+          updatedAt: new Date().toISOString()
+        });
+        toast.success("Đã cập nhật công ty!");
+      } else {
+        const companyRef = await addDoc(collection(db, "companies"), {
+          ...newCompany,
           createdAt: new Date().toISOString()
         });
+
+        if (adminEmail) {
+          await addDoc(collection(db, "users"), {
+            email: adminEmail,
+            role: "company_admin",
+            companyId: companyRef.id,
+            displayName: "Admin " + newCompany.name,
+            mustChangePassword: true,
+            createdAt: new Date().toISOString()
+          });
+        }
+        toast.success("Đã thêm công ty và tài khoản quản trị mặc định (MK: 123)!");
       }
 
-      toast.success("Đã thêm công ty và tài khoản quản trị mặc định (MK: 123)!");
       setShowAddModal(false);
+      setEditingCompany(null);
+      setNewCompany({ name: "", address: "", lat: 0, lng: 0, radius: 100 });
       setAdminEmail("");
       fetchCompanies();
     } catch (e: any) {
       toast.error("Lỗi: " + e.message);
     }
   };
+
+  const handleDeleteCompany = async (id: string) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa công ty này?")) return;
+    try {
+      await deleteDoc(doc(db, "companies", id));
+      toast.success("Đã xóa công ty!");
+      fetchCompanies();
+    } catch (e: any) {
+      toast.error("Lỗi khi xóa: " + e.message);
+    }
+  };
+
+  const openEditModal = (company: any) => {
+    setEditingCompany(company);
+    setNewCompany({
+      name: company.name,
+      address: company.address,
+      lat: company.lat,
+      lng: company.lng,
+      radius: company.radius
+    });
+    setShowAddModal(true);
+  };
+
+  const filteredCompanies = companies.filter(c => 
+    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.address.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -81,11 +118,17 @@ export default function SuperAdminDashboard() {
             <input 
               type="text" 
               placeholder="Tìm kiếm công ty..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2 bg-slate-100 border-transparent rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all outline-none"
             />
           </div>
           <button 
-            onClick={() => setShowAddModal(true)}
+            onClick={() => {
+              setEditingCompany(null);
+              setNewCompany({ name: "", address: "", lat: 0, lng: 0, radius: 100 });
+              setShowAddModal(true);
+            }}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2"
           >
             <Plus size={18} />
@@ -132,13 +175,26 @@ export default function SuperAdminDashboard() {
             <h2 className="font-bold text-slate-900">Danh sách các chi nhánh & công ty</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 p-6 gap-6">
-            {companies.map(company => (
+            {filteredCompanies.map(company => (
               <div key={company.id} className="group bg-slate-50 p-6 rounded-2xl border border-slate-100 hover:border-blue-200 hover:bg-white hover:shadow-xl hover:shadow-blue-50 transition-all">
                 <div className="flex justify-between items-start mb-4">
                   <div className="w-12 h-12 bg-white rounded-xl border border-slate-100 flex items-center justify-center text-slate-400 group-hover:text-blue-600 transition-colors">
                     <Building2 size={24} />
                   </div>
-                  <button className="p-2 text-slate-300 hover:text-slate-600"><MoreVertical size={18} /></button>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => openEditModal(company)}
+                      className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
+                    >
+                      <MoreVertical size={18} />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteCompany(company.id)}
+                      className="p-2 text-slate-400 hover:text-red-600 transition-colors"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                 </div>
                 <h3 className="font-bold text-lg text-slate-900 mb-1">{company.name}</h3>
                 <p className="text-sm text-slate-500 mb-4 line-clamp-1">{company.address}</p>
@@ -152,11 +208,11 @@ export default function SuperAdminDashboard() {
         </div>
       </main>
 
-      {/* Add Modal */}
+      {/* Add/Edit Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-6">
           <div className="bg-white w-full max-w-md rounded-3xl p-8 space-y-6 shadow-2xl">
-            <h2 className="text-2xl font-bold">Thêm công ty mới</h2>
+            <h2 className="text-2xl font-bold">{editingCompany ? "Cập nhật công ty" : "Thêm công ty mới"}</h2>
             <form onSubmit={handleAddCompany} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-400 uppercase">Tên công ty</label>
@@ -201,20 +257,35 @@ export default function SuperAdminDashboard() {
                 </div>
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-400 uppercase">Email quản trị (Admin)</label>
+                <label className="text-xs font-bold text-slate-400 uppercase">Bán kính chấm công (m)</label>
                 <input 
                   required
-                  type="email" 
-                  value={adminEmail}
-                  onChange={e => setAdminEmail(e.target.value)}
+                  type="number"
+                  value={newCompany.radius}
+                  onChange={e => setNewCompany({...newCompany, radius: parseInt(e.target.value)})}
                   className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" 
-                  placeholder="admin@thaithanhthanh.com"
                 />
               </div>
+              {!editingCompany && (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase">Email quản trị (Admin)</label>
+                  <input 
+                    required
+                    type="email" 
+                    value={adminEmail}
+                    onChange={e => setAdminEmail(e.target.value)}
+                    className="w-full px-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" 
+                    placeholder="admin@thaithanhthanh.com"
+                  />
+                </div>
+              )}
               <div className="flex gap-4 pt-4">
                 <button 
                   type="button"
-                  onClick={() => setShowAddModal(false)}
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setEditingCompany(null);
+                  }}
                   className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl"
                 >
                   HỦY
@@ -223,7 +294,7 @@ export default function SuperAdminDashboard() {
                   type="submit"
                   className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200"
                 >
-                  TẠO MỚI
+                  {editingCompany ? "CẬP NHẬT" : "TẠO MỚI"}
                 </button>
               </div>
             </form>
