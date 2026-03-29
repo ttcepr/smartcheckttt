@@ -52,15 +52,23 @@ export default function LoginPage() {
         try {
           await signInWithEmailAndPassword(auth, email, password);
         } catch (err: any) {
-          if (err.code === 'auth/user-not-found') {
-            // Create the super admin account
-            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            await setDoc(doc(db, "users", userCredential.user.uid), {
-              email,
-              role: "super_admin",
-              displayName: "Super Admin",
-              createdAt: new Date().toISOString()
-            });
+          if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+            // Try to create the super admin account
+            try {
+              const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+              await setDoc(doc(db, "users", userCredential.user.uid), {
+                email,
+                role: "super_admin",
+                displayName: "Super Admin",
+                createdAt: new Date().toISOString()
+              });
+            } catch (createErr: any) {
+              // If creation fails, it might be because the user exists but password was wrong
+              if (createErr.code === 'auth/email-already-in-use') {
+                throw new Error("Sai mật khẩu Super Admin!");
+              }
+              throw createErr;
+            }
           } else {
             throw err;
           }
@@ -80,23 +88,30 @@ export default function LoginPage() {
         toast.success("Đăng nhập thành công!");
       } catch (err: any) {
         // If user not found in Auth but exists in Firestore (pre-created by Super Admin)
-        if (err.code === 'auth/user-not-found') {
+        if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
           const q = query(collection(db, "users"), where("email", "==", email));
           const snap = await getDocs(q);
           if (!snap.empty) {
             const userData = snap.docs[0].data();
             if (userData.mustChangePassword && password === "123") {
               // Auto-create the Auth account for the pre-authorized user
-              const userCredential = await createUserWithEmailAndPassword(auth, email, "123456");
-              // Update the Firestore document with the new UID
-              await setDoc(doc(db, "users", userCredential.user.uid), {
-                ...userData,
-                uid: userCredential.user.uid
-              });
-              // Delete the old document (the one without the correct UID)
-              await deleteDoc(snap.docs[0].ref);
-              toast.success("Chào mừng bạn lần đầu đăng nhập!");
-              return;
+              try {
+                const userCredential = await createUserWithEmailAndPassword(auth, email, "123456");
+                // Update the Firestore document with the new UID
+                await setDoc(doc(db, "users", userCredential.user.uid), {
+                  ...userData,
+                  uid: userCredential.user.uid
+                });
+                // Delete the old document (the one without the correct UID)
+                await deleteDoc(snap.docs[0].ref);
+                toast.success("Chào mừng bạn lần đầu đăng nhập!");
+                return;
+              } catch (createErr: any) {
+                if (createErr.code === 'auth/email-already-in-use') {
+                  throw new Error("Sai mật khẩu!");
+                }
+                throw createErr;
+              }
             }
           }
         }
