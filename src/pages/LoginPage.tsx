@@ -48,14 +48,15 @@ export default function LoginPage() {
     setLoading(true);
     try {
       // Handle default credentials for Super Admin if not yet created
-      if (email === "ttcepr@gmail.com" && password === "thai1991") {
+      if (email === "admin@thaithaothanh.com" && password === "admin") {
+        const superAdminPassword = "admin123"; // Firebase requires at least 6 chars
         try {
-          await signInWithEmailAndPassword(auth, email, password);
+          await signInWithEmailAndPassword(auth, email, superAdminPassword);
         } catch (err: any) {
           if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
             // Try to create the super admin account
             try {
-              const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+              const userCredential = await createUserWithEmailAndPassword(auth, email, superAdminPassword);
               await setDoc(doc(db, "users", userCredential.user.uid), {
                 email,
                 role: "super_admin",
