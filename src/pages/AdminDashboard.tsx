@@ -12,7 +12,9 @@ import {
   MapPin,
   Wifi,
   ChevronRight,
-  LayoutDashboard
+  LayoutDashboard,
+  CheckCircle2,
+  AlertCircle
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
@@ -26,6 +28,7 @@ export default function AdminDashboard({ userData }: AdminDashboardProps) {
   const [employees, setEmployees] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
+  const [requests, setRequests] = useState<any[]>([]);
   const [company, setCompany] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
@@ -44,6 +47,7 @@ export default function AdminDashboard({ userData }: AdminDashboardProps) {
       fetchEmployees();
       fetchShifts();
       fetchAttendance();
+      fetchRequests();
     }
   }, [userData]);
 
@@ -75,6 +79,27 @@ export default function AdminDashboard({ userData }: AdminDashboardProps) {
     // Sort by time descending
     attData.sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
     setAttendance(attData);
+  };
+
+  const fetchRequests = async () => {
+    const q = query(collection(db, "requests"), where("companyId", "==", userData.companyId));
+    const snap = await getDocs(q);
+    const reqData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    reqData.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    setRequests(reqData);
+  };
+
+  const handleRequestAction = async (id: string, status: 'approved' | 'rejected') => {
+    try {
+      await updateDoc(doc(db, "requests", id), {
+        status,
+        updatedAt: new Date().toISOString()
+      });
+      toast.success(`Đã ${status === 'approved' ? 'duyệt' : 'từ chối'} đơn!`);
+      fetchRequests();
+    } catch (err: any) {
+      toast.error("Lỗi: " + err.message);
+    }
   };
 
   const handleEmployeeSubmit = async (e: React.FormEvent) => {
@@ -200,6 +225,12 @@ export default function AdminDashboard({ userData }: AdminDashboardProps) {
             onClick={() => setActiveTab("attendance")} 
           />
           <SidebarItem 
+            icon={<Plus size={20} />} 
+            label="Duyệt đơn từ" 
+            active={activeTab === "requests"} 
+            onClick={() => setActiveTab("requests")} 
+          />
+          <SidebarItem 
             icon={<MapPin size={20} />} 
             label="Vị trí & WiFi" 
             active={activeTab === "settings"} 
@@ -215,7 +246,8 @@ export default function AdminDashboard({ userData }: AdminDashboardProps) {
             <h1 className="text-2xl font-bold text-slate-900">
               {activeTab === "employees" ? "Danh sách nhân sự" : 
                activeTab === "shifts" ? "Quản lý ca làm việc" : 
-               activeTab === "attendance" ? "Lịch sử chấm công" : "Cấu hình chi nhánh"}
+               activeTab === "attendance" ? "Lịch sử chấm công" : 
+               activeTab === "requests" ? "Duyệt đơn từ nhân viên" : "Cấu hình chi nhánh"}
             </h1>
             <p className="text-slate-500 text-sm">{company?.name || "Đang tải..."}</p>
           </div>
@@ -355,6 +387,71 @@ export default function AdminDashboard({ userData }: AdminDashboardProps) {
                         )}>
                           {att.status === "on_time" ? "Đúng giờ" : "Muộn"}
                         </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeTab === "requests" && (
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-200">
+                  <th className="px-6 py-4">Nhân viên</th>
+                  <th className="px-6 py-4">Loại đơn</th>
+                  <th className="px-6 py-4">Lý do</th>
+                  <th className="px-6 py-4">Thời gian</th>
+                  <th className="px-6 py-4">Trạng thái</th>
+                  <th className="px-6 py-4">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {requests.map(req => {
+                  const emp = employees.find(e => e.id === req.userId || e.uid === req.userId);
+                  return (
+                    <tr key={req.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-4 font-medium text-slate-700">{emp?.displayName || "Ẩn danh"}</td>
+                      <td className="px-6 py-4">
+                        <span className="px-2 py-1 bg-blue-50 text-blue-600 rounded-md text-[10px] font-bold uppercase">
+                          {req.type === 'leave' ? 'Nghỉ phép' : req.type === 'overtime' ? 'Tăng ca' : 'Đi muộn/Về sớm'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-slate-600 text-sm max-w-xs truncate">{req.reason}</td>
+                      <td className="px-6 py-4 text-slate-600 text-xs">
+                        {req.startDate} {req.endDate !== req.startDate && `đến ${req.endDate}`}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={cn(
+                          "px-2 py-1 rounded-md text-[10px] font-bold uppercase",
+                          req.status === 'approved' ? "bg-emerald-50 text-emerald-600" : 
+                          req.status === 'rejected' ? "bg-rose-50 text-rose-600" : "bg-amber-50 text-amber-600"
+                        )}>
+                          {req.status === 'approved' ? 'Đã duyệt' : req.status === 'rejected' ? 'Từ chối' : 'Chờ duyệt'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 flex gap-2">
+                        {req.status === 'pending' && (
+                          <>
+                            <button 
+                              onClick={() => handleRequestAction(req.id, 'approved')}
+                              className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                              title="Duyệt"
+                            >
+                              <CheckCircle2 size={18} />
+                            </button>
+                            <button 
+                              onClick={() => handleRequestAction(req.id, 'rejected')}
+                              className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              title="Từ chối"
+                            >
+                              <AlertCircle size={18} />
+                            </button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   );

@@ -42,6 +42,18 @@ service cloud.firestore {
     //   - endTime: string (required, HH:mm)
     //   - daysOfWeek: list (optional, numbers 0-6)
     //
+    // Collection: requests
+    // Fields:
+    //   - userId: string (required)
+    //   - companyId: string (required)
+    //   - type: string (required, ['leave', 'overtime', 'late_early'])
+    //   - reason: string (required)
+    //   - startDate: string (required, YYYY-MM-DD)
+    //   - endDate: string (required, YYYY-MM-DD)
+    //   - status: string (required, ['pending', 'approved', 'rejected'])
+    //   - createdAt: string (optional, ISO 8601)
+    //   - updatedAt: string (optional, ISO 8601)
+    //
     // ===============================================================
 
     // ===============================================================
@@ -126,6 +138,19 @@ service cloud.firestore {
              (!('daysOfWeek' in data) || (data.daysOfWeek is list && data.daysOfWeek.size() <= 7));
     }
 
+    function isValidRequest(data) {
+      return hasOnlyAllowedFields(['userId', 'companyId', 'type', 'reason', 'startDate', 'endDate', 'status', 'createdAt', 'updatedAt']) &&
+             data.userId is string && data.userId.size() < 50 &&
+             data.companyId is string && data.companyId.size() < 50 &&
+             data.type in ['leave', 'overtime', 'late_early'] &&
+             data.reason is string && data.reason.size() > 0 && data.reason.size() < 500 &&
+             data.startDate is string && data.startDate.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.endDate is string && data.endDate.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.status in ['pending', 'approved', 'rejected'] &&
+             (!('createdAt' in data) || isValidDateString(data.createdAt)) &&
+             (!('updatedAt' in data) || isValidDateString(data.updatedAt));
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -199,6 +224,29 @@ service cloud.firestore {
       allow create: if (isSuperAdmin() || isCompanyAdmin(request.resource.data.companyId)) && isValidShift(request.resource.data);
       allow update: if (isSuperAdmin() || isCompanyAdmin(resource.data.companyId)) && isValidShift(request.resource.data);
       allow delete: if isSuperAdmin() || isCompanyAdmin(resource.data.companyId);
+    }
+
+    // Requests
+    match /requests/{requestId} {
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.userId) || 
+        isSuperAdmin() || 
+        isCompanyAdmin(resource.data.companyId)
+      );
+      
+      allow create: if isAuthenticated() && isValidRequest(request.resource.data) && (
+        isOwner(request.resource.data.userId) || 
+        isSuperAdmin() || 
+        isCompanyAdmin(request.resource.data.companyId)
+      );
+      
+      allow update: if isAuthenticated() && isValidRequest(request.resource.data) && (
+        isSuperAdmin() || 
+        isCompanyAdmin(resource.data.companyId) ||
+        (isOwner(resource.data.userId) && resource.data.status == 'pending')
+      );
+      
+      allow delete: if isSuperAdmin() || isCompanyAdmin(resource.data.companyId) || (isOwner(resource.data.userId) && resource.data.status == 'pending');
     }
 
     // Default deny

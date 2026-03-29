@@ -61,12 +61,30 @@
         "daysOfWeek": { "type": "array", "items": { "type": "number" }, "description": "Days of the week (0-6)." }
       },
       "required": ["companyId", "name", "startTime", "endTime"]
+    },
+    "Request": {
+      "title": "Request",
+      "description": "A request submitted by an employee (leave, overtime, etc.).",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The ID of the user." },
+        "companyId": { "type": "string", "description": "The ID of the company." },
+        "type": { "type": "string", "enum": ["leave", "overtime", "late_early"], "description": "The type of request." },
+        "reason": { "type": "string", "description": "The reason for the request." },
+        "startDate": { "type": "string", "format": "date", "description": "The start date of the request." },
+        "endDate": { "type": "string", "format": "date", "description": "The end date of the request." },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"], "description": "The status of the request." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the request was created." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the request was last updated." }
+      },
+      "required": ["userId", "companyId", "type", "reason", "startDate", "endDate", "status"]
     }
   },
   "firestore": {
     "companies": { "schema": "Company", "description": "Collection of companies." },
     "users": { "schema": "User", "description": "Collection of users." },
     "attendance": { "schema": "Attendance", "description": "Collection of attendance records." },
-    "shifts": { "schema": "Shift", "description": "Collection of work shifts." }
+    "shifts": { "schema": "Shift", "description": "Collection of work shifts." },
+    "requests": { "schema": "Request", "description": "Collection of employee requests." }
   }
 }
