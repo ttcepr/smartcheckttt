@@ -1,0 +1,7 @@
+{
+  "name": "SmartCheck - Hệ thống chấm công thông minh",
+  "description": "Ứng dụng chấm công đa công ty với định vị GPS, quét WiFi và quản lý nhân sự tập trung.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

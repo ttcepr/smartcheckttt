@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "Company": {
+      "title": "Company",
+      "description": "Thông tin công ty/chi nhánh",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Tên công ty" },
+        "address": { "type": "string", "description": "Địa chỉ" },
+        "lat": { "type": "number", "description": "Vĩ độ" },
+        "lng": { "type": "number", "description": "Kinh độ" },
+        "radius": { "type": "number", "description": "Bán kính cho phép (m)" },
+        "wifiSSID": { "type": "string", "description": "Tên WiFi cho phép" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "lat", "lng", "radius"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Thông tin người dùng",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["super_admin", "company_admin", "employee"] },
+        "companyId": { "type": "string", "description": "ID công ty trực thuộc" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Attendance": {
+      "title": "Attendance",
+      "description": "Dữ liệu chấm công",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "companyId": { "type": "string" },
+        "checkInTime": { "type": "string", "format": "date-time" },
+        "checkOutTime": { "type": "string", "format": "date-time" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "wifiSSID": { "type": "string" },
+        "status": { "type": "string", "enum": ["on_time", "late", "early_leave"] },
+        "date": { "type": "string", "description": "YYYY-MM-DD" }
+      },
+      "required": ["userId", "companyId", "checkInTime", "date"]
+    },
+    "Shift": {
+      "title": "Shift",
+      "description": "Ca làm việc",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "name": { "type": "string" },
+        "startTime": { "type": "string", "description": "HH:mm" },
+        "endTime": { "type": "string", "description": "HH:mm" },
+        "workDays": { "type": "array", "items": { "type": "number" } }
+      },
+      "required": ["companyId", "name", "startTime", "endTime"]
+    }
+  },
+  "firestore": {
+    "companies": { "schema": "Company", "description": "Danh sách các công ty" },
+    "users": { "schema": "User", "description": "Danh sách người dùng" },
+    "attendance": { "schema": "Attendance", "description": "Dữ liệu chấm công" },
+    "shifts": { "schema": "Shift", "description": "Các ca làm việc" }
+  }
+}
