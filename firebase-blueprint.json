@@ -2,42 +2,41 @@
   "entities": {
     "Company": {
       "title": "Company",
-      "description": "Thông tin công ty/chi nhánh",
+      "description": "A company or branch in the attendance system.",
       "type": "object",
       "properties": {
-        "name": { "type": "string", "description": "Tên công ty" },
-        "address": { "type": "string", "description": "Địa chỉ" },
-        "lat": { "type": "number", "description": "Vĩ độ" },
-        "lng": { "type": "number", "description": "Kinh độ" },
-        "radius": { "type": "number", "description": "Bán kính cho phép (m)" },
-        "wifiSSID": { "type": "string", "description": "Tên WiFi cho phép" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "name": { "type": "string", "description": "The name of the company." },
+        "address": { "type": "string", "description": "The physical address of the company." },
+        "lat": { "type": "number", "description": "Latitude of the company location." },
+        "lng": { "type": "number", "description": "Longitude of the company location." },
+        "radius": { "type": "number", "description": "Allowed radius for attendance in meters." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the company was created." }
       },
       "required": ["name", "lat", "lng", "radius"]
     },
     "User": {
       "title": "User",
-      "description": "Thông tin người dùng",
+      "description": "A user in the system (Super Admin, Company Admin, or Employee).",
       "type": "object",
       "properties": {
-        "uid": { "type": "string" },
-        "email": { "type": "string" },
-        "displayName": { "type": "string" },
-        "role": { "type": "string", "enum": ["super_admin", "company_admin", "employee"] },
-        "companyId": { "type": "string", "description": "ID công ty trực thuộc" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "email": { "type": "string", "format": "email", "description": "The user's email address." },
+        "role": { "type": "string", "enum": ["super_admin", "company_admin", "employee"], "description": "The user's role." },
+        "companyId": { "type": "string", "description": "The ID of the company the user belongs to." },
+        "displayName": { "type": "string", "description": "The user's full name." },
+        "mustChangePassword": { "type": "boolean", "description": "Whether the user must change their password on first login." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the user was created." }
       },
-      "required": ["uid", "email", "role"]
+      "required": ["email", "role"]
     },
     "Attendance": {
       "title": "Attendance",
-      "description": "Dữ liệu chấm công",
+      "description": "An attendance record (check-in or check-out).",
       "type": "object",
       "properties": {
-        "userId": { "type": "string" },
-        "companyId": { "type": "string" },
-        "checkInTime": { "type": "string", "format": "date-time" },
-        "checkOutTime": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string", "description": "The ID of the user." },
+        "companyId": { "type": "string", "description": "The ID of the company." },
+        "type": { "type": "string", "enum": ["check_in", "check_out"], "description": "The type of attendance." },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the attendance was recorded." },
         "location": {
           "type": "object",
           "properties": {
@@ -45,30 +44,29 @@
             "lng": { "type": "number" }
           }
         },
-        "wifiSSID": { "type": "string" },
-        "status": { "type": "string", "enum": ["on_time", "late", "early_leave"] },
-        "date": { "type": "string", "description": "YYYY-MM-DD" }
+        "wifiInfo": { "type": "string", "description": "Information about the connected WiFi." },
+        "status": { "type": "string", "description": "Status of the attendance (e.g., 'valid', 'invalid')." }
       },
-      "required": ["userId", "companyId", "checkInTime", "date"]
+      "required": ["userId", "companyId", "type", "timestamp"]
     },
     "Shift": {
       "title": "Shift",
-      "description": "Ca làm việc",
+      "description": "A work shift defined for a company.",
       "type": "object",
       "properties": {
-        "companyId": { "type": "string" },
-        "name": { "type": "string" },
-        "startTime": { "type": "string", "description": "HH:mm" },
-        "endTime": { "type": "string", "description": "HH:mm" },
-        "workDays": { "type": "array", "items": { "type": "number" } }
+        "companyId": { "type": "string", "description": "The ID of the company." },
+        "name": { "type": "string", "description": "The name of the shift." },
+        "startTime": { "type": "string", "description": "The start time of the shift (HH:mm)." },
+        "endTime": { "type": "string", "description": "The end time of the shift (HH:mm)." },
+        "daysOfWeek": { "type": "array", "items": { "type": "number" }, "description": "Days of the week (0-6)." }
       },
       "required": ["companyId", "name", "startTime", "endTime"]
     }
   },
   "firestore": {
-    "companies": { "schema": "Company", "description": "Danh sách các công ty" },
-    "users": { "schema": "User", "description": "Danh sách người dùng" },
-    "attendance": { "schema": "Attendance", "description": "Dữ liệu chấm công" },
-    "shifts": { "schema": "Shift", "description": "Các ca làm việc" }
+    "companies": { "schema": "Company", "description": "Collection of companies." },
+    "users": { "schema": "User", "description": "Collection of users." },
+    "attendance": { "schema": "Attendance", "description": "Collection of attendance records." },
+    "shifts": { "schema": "Shift", "description": "Collection of work shifts." }
   }
 }

@@ -1,6 +1,6 @@
 {
-  "name": "SmartCheck - Hệ thống chấm công thông minh",
-  "description": "Ứng dụng chấm công đa công ty với định vị GPS, quét WiFi và quản lý nhân sự tập trung.",
+  "name": "Hệ thống chấm công THÁI THẢO THÀNH",
+  "description": "Hệ thống quản lý chấm công thông minh đa công ty với GPS, WiFi và quản lý nhân sự tập trung cho THÁI THẢO THÀNH.",
   "requestFramePermissions": [
     "geolocation"
   ]

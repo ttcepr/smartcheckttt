@@ -1,54 +1,209 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper functions
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: companies
+    // Fields:
+    //   - name: string (required)
+    //   - address: string (optional)
+    //   - lat: number (required)
+    //   - lng: number (required)
+    //   - radius: number (required)
+    //   - createdAt: string (optional, ISO 8601)
+    //
+    // Collection: users
+    // Fields:
+    //   - email: string (required, email format)
+    //   - role: string (required, ['super_admin', 'company_admin', 'employee'])
+    //   - companyId: string (required for company_admin and employee)
+    //   - displayName: string (optional)
+    //   - mustChangePassword: bool (optional)
+    //   - createdAt: string (optional, ISO 8601)
+    //
+    // Collection: attendance
+    // Fields:
+    //   - userId: string (required)
+    //   - companyId: string (required)
+    //   - type: string (required, ['check_in', 'check_out'])
+    //   - timestamp: string (required, ISO 8601)
+    //   - location: map (optional, {lat: number, lng: number})
+    //   - wifiInfo: string (optional)
+    //   - status: string (optional)
+    //
+    // Collection: shifts
+    // Fields:
+    //   - companyId: string (required)
+    //   - name: string (required)
+    //   - startTime: string (required, HH:mm)
+    //   - endTime: string (required, HH:mm)
+    //   - daysOfWeek: list (optional, numbers 0-6)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
-    
+
     function isSuperAdmin() {
       return isAuthenticated() && 
         (getUserData().role == 'super_admin' || 
          (request.auth.token.email == 'ttcepr@gmail.com' && request.auth.token.email_verified == true));
     }
-    
+
     function isCompanyAdmin(companyId) {
       return isAuthenticated() && 
         (getUserData().role == 'company_admin' && getUserData().companyId == companyId);
     }
-    
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidCompany(data) {
+      return hasOnlyAllowedFields(['name', 'address', 'lat', 'lng', 'radius', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.lat is number && data.lng is number &&
+             data.radius is number && data.radius > 0 &&
+             (!('address' in data) || (data.address is string && data.address.size() < 200)) &&
+             (!('createdAt' in data) || isValidDateString(data.createdAt));
+    }
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['email', 'role', 'companyId', 'displayName', 'mustChangePassword', 'createdAt', 'uid']) &&
+             isValidEmail(data.email) &&
+             data.role in ['super_admin', 'company_admin', 'employee'] &&
+             (!('companyId' in data) || (data.companyId is string && data.companyId.size() < 50)) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
+             (!('mustChangePassword' in data) || data.mustChangePassword is bool) &&
+             (!('createdAt' in data) || isValidDateString(data.createdAt));
+    }
+
+    function isValidAttendance(data) {
+      return hasOnlyAllowedFields(['userId', 'companyId', 'type', 'timestamp', 'location', 'wifiInfo', 'status']) &&
+             data.userId is string && data.userId.size() < 50 &&
+             data.companyId is string && data.companyId.size() < 50 &&
+             data.type in ['check_in', 'check_out'] &&
+             isValidDateString(data.timestamp) &&
+             (!('location' in data) || (data.location is map && data.location.lat is number && data.location.lng is number)) &&
+             (!('wifiInfo' in data) || (data.wifiInfo is string && data.wifiInfo.size() < 100)) &&
+             (!('status' in data) || (data.status is string && data.status.size() < 50));
+    }
+
+    function isValidShift(data) {
+      return hasOnlyAllowedFields(['companyId', 'name', 'startTime', 'endTime', 'daysOfWeek']) &&
+             data.companyId is string && data.companyId.size() < 50 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.startTime is string && data.startTime.matches("^\\d{2}:\\d{2}$") &&
+             data.endTime is string && data.endTime.matches("^\\d{2}:\\d{2}$") &&
+             (!('daysOfWeek' in data) || (data.daysOfWeek is list && data.daysOfWeek.size() <= 7));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
     // Companies
     match /companies/{companyId} {
       allow read: if isAuthenticated();
-      allow write: if isSuperAdmin();
+      allow create: if isSuperAdmin() && isValidCompany(request.resource.data);
+      allow update: if isSuperAdmin() && isValidCompany(request.resource.data);
+      allow delete: if isSuperAdmin();
     }
 
     // Users
     match /users/{userId} {
-      allow read: if isAuthenticated() && (isOwner(userId) || isSuperAdmin() || isCompanyAdmin(resource.data.companyId));
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (isOwner(userId) || isSuperAdmin() || isCompanyAdmin(resource.data.companyId));
+      // PII Protection: Only owner, Super Admin, or Company Admin of the same company can read
+      allow read: if isAuthenticated() && (
+        isOwner(userId) || 
+        isSuperAdmin() || 
+        (isCompanyAdmin(resource.data.companyId))
+      );
+      
+      // Super Admin can create any user. 
+      // Users can create their own record during first login (limited to 'employee' role unless they are the super admin email)
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (
+        isSuperAdmin() || 
+        (isOwner(userId) && request.resource.data.role == 'employee')
+      );
+      
+      // Update: Owner can update their own profile (but not role or companyId). 
+      // Super Admin can update anything.
+      // Company Admin can update users in their company.
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (
+        isSuperAdmin() || 
+        (isCompanyAdmin(resource.data.companyId)) ||
+        (isOwner(userId) && 
+         request.resource.data.role == resource.data.role && 
+         request.resource.data.companyId == resource.data.companyId)
+      );
+      
+      allow delete: if isSuperAdmin();
     }
 
     // Attendance
     match /attendance/{attendanceId} {
-      allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isSuperAdmin() || isCompanyAdmin(resource.data.companyId));
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (isSuperAdmin() || isCompanyAdmin(resource.data.companyId));
+      // Read: Owner, Super Admin, or Company Admin of the same company
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.userId) || 
+        isSuperAdmin() || 
+        isCompanyAdmin(resource.data.companyId)
+      );
+      
+      // Create: User can create their own attendance record
+      allow create: if isAuthenticated() && isValidAttendance(request.resource.data) && (
+        isOwner(request.resource.data.userId) || 
+        isSuperAdmin() || 
+        isCompanyAdmin(request.resource.data.companyId)
+      );
+      
+      // Update/Delete: Only Super Admin or Company Admin
+      allow update: if isAuthenticated() && isValidAttendance(request.resource.data) && (
+        isSuperAdmin() || 
+        isCompanyAdmin(resource.data.companyId)
+      );
+      
+      allow delete: if isSuperAdmin() || isCompanyAdmin(resource.data.companyId);
     }
 
     // Shifts
     match /shifts/{shiftId} {
       allow read: if isAuthenticated();
-      allow write: if isSuperAdmin() || isCompanyAdmin(request.resource.data.companyId);
+      allow create: if (isSuperAdmin() || isCompanyAdmin(request.resource.data.companyId)) && isValidShift(request.resource.data);
+      allow update: if (isSuperAdmin() || isCompanyAdmin(resource.data.companyId)) && isValidShift(request.resource.data);
+      allow delete: if isSuperAdmin() || isCompanyAdmin(resource.data.companyId);
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
     }
   }
 }
